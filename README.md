@@ -230,3 +230,31 @@ This project fulfills all criteria for academic and engineering evaluation:
 - Real OpenCV mathematical operations executing locally on CPU.
 - Visual demonstration of each intermediate step in the digital image processing workflow.
 - Clean separation of concerns between computer vision processing, REST API layer, and client UI.
+
+---
+
+## 10. Deployment Guide (Vercel + Render)
+
+Because the project consists of a **React frontend** and a **Python OpenCV backend**, they should be hosted according to their architectures:
+
+### 1. Deploy the Backend (Render.com — Free)
+1. Go to [render.com](https://render.com) and create a free account.
+2. Click **New +** > **Web Service** and connect your GitHub repository (`catooning-image`).
+3. Set the following configuration:
+   - **Name:** `cartoonify-backend`
+   - **Root Directory:** `backend`
+   - **Environment:** `Python 3`
+   - **Build Command:** `pip install -r requirements.txt`
+   - **Start Command:** `uvicorn app:app --host 0.0.0.0 --port $PORT`
+4. Click **Deploy Web Service**.
+5. Once deployed, copy your backend URL (e.g. `https://cartoonify-backend.onrender.com`).
+
+### 2. Connect the Frontend (Vercel)
+1. In your [Vercel Dashboard](https://vercel.com), navigate to your deployed project.
+2. Go to **Settings** > **Environment Variables**.
+3. Add a new variable:
+   - **Key:** `VITE_API_BASE_URL`
+   - **Value:** `https://your-backend-name.onrender.com/api` (replace with your actual Render URL)
+4. Go to the **Deployments** tab, click the three dots `...` on your latest deployment, and click **Redeploy**.
+5. Your Vercel frontend is now connected to your live cloud OpenCV backend!
+

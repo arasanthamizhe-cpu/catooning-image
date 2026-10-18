@@ -39,6 +39,18 @@ IMAGE_STORE: Dict[str, Dict[str, Any]] = {}
 
 # Sample image directory path
 SAMPLES_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "sample_images"))
+if not os.path.exists(SAMPLES_DIR):
+    SAMPLES_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "sample_images"))
+
+
+@app.get("/")
+def root():
+    return {
+        "status": "online",
+        "service": "Cartoonify AI — OpenCV Engine",
+        "health": "/api/health",
+        "docs": "/docs",
+    }
 
 
 class CartoonParamsRequest(BaseModel):
@@ -313,4 +325,6 @@ def load_sample_image(sample_id: str):
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run("app:app", host="127.0.0.1", port=8000, reload=True)
+    port = int(os.environ.get("PORT", 8000))
+    host = os.environ.get("HOST", "0.0.0.0")
+    uvicorn.run("app:app", host=host, port=port, reload=False)
