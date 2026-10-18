@@ -3,9 +3,15 @@
  * Interfaces with the Python FastAPI OpenCV backend.
  */
 
-const rawBase = import.meta.env.VITE_API_BASE_URL || "http://127.0.0.1:8000/api";
+const isLocal =
+  typeof window !== "undefined" &&
+  (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1");
+
+const defaultBase = isLocal ? "http://127.0.0.1:8000/api" : "/api";
+const rawBase = import.meta.env.VITE_API_BASE_URL || defaultBase;
 const cleanBase = rawBase.replace(/\/+$/, "");
 const API_BASE = cleanBase.endsWith("/api") ? cleanBase : `${cleanBase}/api`;
+
 
 
 export async function fetchHealth() {

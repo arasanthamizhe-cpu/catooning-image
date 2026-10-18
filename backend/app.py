@@ -37,6 +37,59 @@ app.add_middleware(
 # Structure: { image_id: { "bgr": ndarray, "cartoon_bgr": ndarray, "metadata": dict, "last_params": dict } }
 IMAGE_STORE: Dict[str, Dict[str, Any]] = {}
 
+import tempfile
+import json
+
+TEMP_DIR = os.path.join(tempfile.gettempdir(), "cartoonify_sessions")
+try:
+    os.makedirs(TEMP_DIR, exist_ok=True)
+except Exception:
+    pass
+
+
+def save_to_disk_cache(image_id: str, bgr: np.ndarray, filename: str, metadata: dict):
+    try:
+        cv2.imwrite(os.path.join(TEMP_DIR, f"{image_id}.png"), bgr)
+        with open(os.path.join(TEMP_DIR, f"{image_id}.json"), "w") as f:
+            json.dump({"filename": filename, "metadata": metadata}, f)
+    except Exception:
+        pass
+
+
+def get_session(image_id: str) -> Optional[Dict[str, Any]]:
+    if image_id in IMAGE_STORE:
+        return IMAGE_STORE[image_id]
+    img_path = os.path.join(TEMP_DIR, f"{image_id}.png")
+    meta_path = os.path.join(TEMP_DIR, f"{image_id}.json")
+    if os.path.exists(img_path):
+        bgr = cv2.imread(img_path)
+        if bgr is not None:
+            filename = "cached_image.png"
+            metadata = {"current_width": bgr.shape[1], "current_height": bgr.shape[0]}
+            if os.path.exists(meta_path):
+                try:
+                    with open(meta_path, "r") as f:
+                        data = json.load(f)
+                        filename = data.get("filename", filename)
+                        metadata = data.get("metadata", metadata)
+                except Exception:
+                    pass
+            cartoon_bgr = None
+            cartoon_path = os.path.join(TEMP_DIR, f"{image_id}_cartoon.png")
+            if os.path.exists(cartoon_path):
+                cartoon_bgr = cv2.imread(cartoon_path)
+            session = {
+                "bgr": bgr,
+                "filename": filename,
+                "metadata": metadata,
+                "cartoon_bgr": cartoon_bgr,
+                "last_params": {},
+                "created_at": time.time(),
+            }
+            IMAGE_STORE[image_id] = session
+            return session
+    return None
+
 # Sample image directory path
 SAMPLES_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "sample_images"))
 if not os.path.exists(SAMPLES_DIR):
@@ -112,6 +165,8 @@ async def upload_image(file: UploadFile = File(...)):
             "created_at": time.time(),
         }
 
+        save_to_disk_cache(image_id, bgr_image, file.filename or "uploaded_image", IMAGE_STORE[image_id]["metadata"])
+
         # Keep cache manageable (keep latest 30 sessions)
         if len(IMAGE_STORE) > 30:
             oldest_key = min(IMAGE_STORE.keys(), key=lambda k: IMAGE_STORE[k]["created_at"])
@@ -139,10 +194,10 @@ def preprocess_image(req: CartoonParamsRequest):
     Executes each distinct preprocessing stage and returns stage cards
     (Original, Grayscale, Noise Reduction, Adaptive Edge Mask).
     """
-    if req.image_id not in IMAGE_STORE:
+    session = get_session(req.image_id)
+    if not session:
         raise HTTPException(status_code=404, detail="Image session not found or expired. Please upload again.")
 
-    session = IMAGE_STORE[req.image_id]
     bgr_image = session["bgr"]
 
     stages_data = Cartoonizer.get_preprocessing_stages(bgr_image, req.dict())
@@ -159,10 +214,10 @@ def cartoonify_image(req: CartoonParamsRequest):
     """
     Applies the full OpenCV cartoonization algorithm with user-specified parameters.
     """
-    if req.image_id not in IMAGE_STORE:
+    session = get_session(req.image_id)
+    if not session:
         raise HTTPException(status_code=404, detail="Image session not found or expired. Please upload again.")
 
-    session = IMAGE_STORE[req.image_id]
     bgr_image = session["bgr"]
 
     result = Cartoonizer.cartoonify(bgr_image, req.dict())
@@ -170,6 +225,10 @@ def cartoonify_image(req: CartoonParamsRequest):
     # Cache raw cv2 cartoon image for quick binary download
     session["cartoon_bgr"] = result["cv2_raw_cartoon"]
     session["last_params"] = result["parameters"]
+    try:
+        cv2.imwrite(os.path.join(TEMP_DIR, f"{req.image_id}_cartoon.png"), result["cv2_raw_cartoon"])
+    except Exception:
+        pass
 
     return {
         "success": True,
@@ -195,7 +254,8 @@ def download_image_get(
     """
     Direct binary download of the processed cartoon image.
     """
-    if image_id not in IMAGE_STORE or IMAGE_STORE[image_id]["cartoon_bgr"] is None:
+    session = get_session(image_id)
+    if not session or session["cartoon_bgr"] is None:
         raise HTTPException(status_code=404, detail="Cartoon image not found. Please generate the cartoon first.")
 
     session = IMAGE_STORE[image_id]
@@ -312,6 +372,8 @@ def load_sample_image(sample_id: str):
         "last_params": {},
         "created_at": time.time(),
     }
+
+    save_to_disk_cache(image_id, bgr_image, filename, IMAGE_STORE[image_id]["metadata"])
 
     return {
         "success": True,
